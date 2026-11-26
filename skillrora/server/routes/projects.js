@@ -105,7 +105,7 @@ router.get('/projects/:id', optionalAuth, (req, res) => {
 })
 
 router.post('/projects', requireAuth, requireRole('client'), (req, res) => {
-  const { title, category, description, budget_min, budget_max, deadline, experience_level = 'intermediate', skills = [] } = req.body || {}
+  const { title, category, subcategory = '', description, budget_min, budget_max, currency = 'USDT', crypto_network = 'Polygon', remote_preference = 'worldwide', attachments = [], deadline, experience_level = 'intermediate', skills = [] } = req.body || {}
   if (!title || title.trim().length < 6) return res.status(400).json({ error: 'Project title must be at least 6 characters.' })
   if (!category) return res.status(400).json({ error: 'Category is required.' })
   if (!description || description.trim().length < 20) return res.status(400).json({ error: 'Project description must be at least 20 characters.' })
@@ -114,10 +114,18 @@ router.post('/projects', requireAuth, requireRole('client'), (req, res) => {
   if (!minB || !maxB || minB <= 0 || maxB < minB) return res.status(400).json({ error: 'Provide a valid budget range.' })
   if (!deadline) return res.status(400).json({ error: 'Deadline is required.' })
 
+  const validCurrencies = ['USDT', 'USDC', 'ETH', 'BTC']
+  const validCurr = validCurrencies.includes(currency) ? currency : 'USDT'
+
   const result = db.prepare(`
-    INSERT INTO projects (client_id, title, category, description, budget_min, budget_max, deadline, experience_level, skills_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.user.id, title.trim(), category, description.trim(), minB, maxB, deadline, experience_level, JSON.stringify(Array.isArray(skills) ? skills : []))
+    INSERT INTO projects (client_id, title, category, subcategory, description, budget_min, budget_max, currency, crypto_network, remote_preference, attachments_json, deadline, experience_level, skills_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.user.id, title.trim(), category, subcategory.trim(), description.trim(),
+    minB, maxB, validCurr, crypto_network, remote_preference,
+    JSON.stringify(Array.isArray(attachments) ? attachments : []),
+    deadline, experience_level, JSON.stringify(Array.isArray(skills) ? skills : [])
+  )
 
   const created = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid)
   res.status(201).json({ project: formatProject(created) })
@@ -165,7 +173,7 @@ router.post('/projects/:id/apply', requireAuth, requireRole('freelancer'), (req,
   if (!project) return res.status(404).json({ error: 'Project not found.' })
   if (project.status !== 'open') return res.status(400).json({ error: 'This project is no longer accepting applications.' })
 
-  const { cover_letter, proposed_budget, delivery_days } = req.body || {}
+  const { cover_letter, proposed_budget, currency, delivery_days } = req.body || {}
   if (!cover_letter || cover_letter.trim().length < 20) {
     return res.status(400).json({ error: 'Cover letter must be at least 20 characters.' })
   }
@@ -175,18 +183,20 @@ router.post('/projects/:id/apply', requireAuth, requireRole('freelancer'), (req,
     return res.status(400).json({ error: 'Proposed budget and delivery days must be positive numbers.' })
   }
 
+  const validCurr = ['USDT', 'USDC', 'ETH', 'BTC'].includes(currency) ? currency : (project.currency || 'USDT')
+
   const existing = db.prepare('SELECT id FROM applications WHERE project_id = ? AND freelancer_id = ?').get(project.id, req.user.id)
   if (existing) return res.status(409).json({ error: 'You have already applied to this project.' })
 
   const result = db.prepare(`
-    INSERT INTO applications (project_id, freelancer_id, cover_letter, proposed_budget, delivery_days)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(project.id, req.user.id, cover_letter.trim(), budget, days)
+    INSERT INTO applications (project_id, freelancer_id, cover_letter, proposed_budget, currency, delivery_days)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(project.id, req.user.id, cover_letter.trim(), budget, validCurr, days)
 
   db.prepare(`
     INSERT INTO notifications (user_id, type, title, body, link)
-    VALUES (?, 'application', 'New project application', ?, ?)
-  `).run(project.client_id, `${req.user.name} applied to "${project.title}" for $${budget}.`, `/projects/${project.id}`)
+    VALUES (?, 'application', 'New project proposal', ?, ?)
+  `).run(project.client_id, `${req.user.name} applied to "${project.title}" for ${budget} ${validCurr}.`, `/projects/${project.id}`)
 
   const appRow = db.prepare('SELECT * FROM applications WHERE id = ?').get(result.lastInsertRowid)
   res.status(201).json({ application: appRow })
@@ -209,24 +219,33 @@ router.put('/applications/:id/status', requireAuth, requireRole('client'), (req,
   db.prepare('UPDATE applications SET status = ? WHERE id = ?').run(status, appRow.id)
 
   if (status === 'accepted') {
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(appRow.project_id)
     db.prepare("UPDATE projects SET status = 'in_progress', hired_freelancer_id = ?, progress = 15 WHERE id = ?").run(appRow.freelancer_id, appRow.project_id)
     db.prepare("UPDATE applications SET status = 'rejected' WHERE project_id = ? AND id != ? AND status IN ('pending', 'shortlisted')").run(appRow.project_id, appRow.id)
 
     const orderCode = `SK-${Math.floor(1030 + Math.random() * 8900)}`
+    const curr = appRow.currency || project?.currency || 'USDT'
+    const network = project?.crypto_network || 'Polygon'
+
     const orderRes = db.prepare(`
-      INSERT INTO orders (order_code, project_id, client_id, freelancer_id, title, package_name, amount, status, due_date)
-      VALUES (?, ?, ?, ?, ?, 'Project Milestone', ?, 'in_progress', ?)
-    `).run(orderCode, appRow.project_id, req.user.id, appRow.freelancer_id, appRow.project_title, appRow.proposed_budget, appRow.deadline)
+      INSERT INTO orders (order_code, project_id, client_id, freelancer_id, title, package_name, amount, currency, crypto_network, status, escrow_status, due_date)
+      VALUES (?, ?, ?, ?, ?, 'Contract Milestone', ?, ?, ?, 'requirements', 'pending_deposit', ?)
+    `).run(orderCode, appRow.project_id, req.user.id, appRow.freelancer_id, appRow.project_title, appRow.proposed_budget, curr, network, appRow.deadline)
 
     const fee = Math.round(appRow.proposed_budget * 0.1)
     db.prepare(`
-      INSERT INTO payments (order_id, project_id, payer_id, payee_id, amount, platform_fee, net_amount, gateway_provider, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_gateway')
+      INSERT INTO payments (order_id, project_id, payer_id, payee_id, amount, platform_fee, net_amount, currency, crypto_currency, crypto_network, gateway_provider, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'crypto_escrow', 'pending_deposit')
     `).run(
       orderRes.lastInsertRowid, appRow.project_id, req.user.id, appRow.freelancer_id,
       appRow.proposed_budget, fee, appRow.proposed_budget - fee,
-      process.env.STRIPE_SECRET_KEY ? 'stripe_connect' : 'stripe_unconfigured'
+      curr, curr, network
     )
+
+    db.prepare(`
+      INSERT INTO notifications (user_id, type, title, body, link)
+      VALUES (?, 'escrow', 'Escrow Deposit Required', ?, '/orders')
+    `).run(req.user.id, `Please deposit ${appRow.proposed_budget} ${curr} into smart contract escrow for order #${orderCode}.`)
   }
 
   const label = status === 'accepted' ? 'Hired!' : status === 'shortlisted' ? 'Shortlisted' : 'Application update'

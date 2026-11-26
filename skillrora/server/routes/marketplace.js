@@ -156,27 +156,28 @@ router.get('/gigs/:idOrSlug', (req, res) => {
 })
 
 router.post('/gigs', requireAuth, requireRole('freelancer'), (req, res) => {
-  const { title, category, subcategory = '', description, price, delivery_days = 3, revisions = 2, tags = [], cover_image, status = 'active', packages } = req.body || {}
+  const { title, category, subcategory = '', description, price, currency = 'USDT', crypto_network = 'Polygon', delivery_days = 3, revisions = 2, tags = [], cover_image, status = 'active', packages } = req.body || {}
   if (!title || title.trim().length < 10) return res.status(400).json({ error: 'Gig title must be at least 10 characters.' })
   if (!category) return res.status(400).json({ error: 'Category is required.' })
   if (!description || description.trim().length < 30) return res.status(400).json({ error: 'Description must be at least 30 characters.' })
   const numPrice = Number(price)
-  if (!numPrice || numPrice < 5) return res.status(400).json({ error: 'Price must be at least $5.' })
+  if (!numPrice || numPrice <= 0) return res.status(400).json({ error: 'Price must be greater than 0.' })
 
+  const validCurr = ['USDT', 'USDC', 'ETH', 'BTC'].includes(currency) ? currency : 'USDT'
   const slugBase = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48)
   const slug = `${slugBase}-${Date.now().toString(36)}`
   const defaultPkgs = packages || [
-    { key: 'Basic', price: numPrice, blurb: 'Starter package', delivery: Number(delivery_days), revisions: Number(revisions), features: ['Core deliverable', 'Commercial use'] },
-    { key: 'Standard', price: Math.round(numPrice * 2), blurb: 'Standard package', delivery: Number(delivery_days) + 2, revisions: Number(revisions) + 1, features: ['Expanded deliverable', 'Source files'] },
-    { key: 'Premium', price: Math.round(numPrice * 3.5), blurb: 'Full package', delivery: Number(delivery_days) + 5, revisions: Number(revisions) + 3, features: ['Complete system', 'Priority support'] },
+    { key: 'Basic', price: numPrice, currency: validCurr, blurb: 'Starter package', delivery: Number(delivery_days), revisions: Number(revisions), features: ['Core deliverable', 'Commercial use'] },
+    { key: 'Standard', price: Math.round(numPrice * 2.2), currency: validCurr, blurb: 'Standard package', delivery: Number(delivery_days) + 2, revisions: Number(revisions) + 1, features: ['Expanded deliverable', 'Source files'] },
+    { key: 'Premium', price: Math.round(numPrice * 3.8), currency: validCurr, blurb: 'Full package', delivery: Number(delivery_days) + 5, revisions: Number(revisions) + 3, features: ['Complete system', 'Priority support'] },
   ]
   const imgUrl = cover_image || 'https://images.unsplash.com/photo-1559028012-481c04fa702d?auto=format&fit=crop&w=800&q=85'
 
   const result = db.prepare(`
-    INSERT INTO gigs (slug, seller_id, title, category, subcategory, description, price, delivery_days, revisions, packages_json, tags_json, cover_image, gallery_json, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO gigs (slug, seller_id, title, category, subcategory, description, price, currency, crypto_network, delivery_days, revisions, packages_json, tags_json, cover_image, gallery_json, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    slug, req.user.id, title.trim(), category, subcategory, description.trim(), numPrice,
+    slug, req.user.id, title.trim(), category, subcategory, description.trim(), numPrice, validCurr, crypto_network,
     Number(delivery_days) || 3, Number(revisions) || 2, JSON.stringify(defaultPkgs),
     JSON.stringify(Array.isArray(tags) ? tags : []), imgUrl, JSON.stringify([{ url: imgUrl, alt: title.trim() }]),
     ['active', 'pending', 'draft', 'paused'].includes(status) ? status : 'active'

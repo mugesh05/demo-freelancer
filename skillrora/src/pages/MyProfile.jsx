@@ -175,7 +175,7 @@ export default function MyProfile() {
                 <div style={{ marginTop: 20, borderTop: '1px solid var(--sk-border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--sk-muted)' }}>Hourly Rate</span>
-                    <strong>${user.hourly_rate}/hr</strong>
+                    <strong>{user.hourly_rate} {user.hourly_currency || 'USDT'}/hr</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--sk-muted)' }}>Experience</span>
@@ -275,8 +275,8 @@ export default function MyProfile() {
                     {user.role === 'freelancer' && (
                       <>
                         <div className="sk-field">
-                          <label>Hourly Rate ($)</label>
-                          <input className="sk-input" type="number" min="5" value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} />
+                          <label>Hourly Rate ({form.hourly_currency || 'USDT'})</label>
+                          <input className="sk-input" type="number" min="1" step="any" value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} />
                         </div>
                         <div className="sk-field">
                           <label>Availability</label>

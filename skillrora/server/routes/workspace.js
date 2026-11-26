@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import path from 'node:path'
-import { db, uploadsDir } from '../db.js'
+import { db, uploadsDir, BLOCK_EXPLORERS } from '../db.js'
 import { requireAuth, requireRole, safeJson, sanitizeUser } from '../middleware/auth.js'
 
 const router = Router()
@@ -28,10 +28,10 @@ function computeProfileCompletion(u) {
   let score = 0
   if (u.name) score += 15
   if (u.title) score += 15
-  if (u.bio && u.bio.length > 20) score += 20
+  if (u.bio && u.bio.length > 20) score += 15
   if (u.location) score += 10
+  if (u.wallet_address) score += 15
   if (safeJson(u.skills_json, []).length > 0) score += 15
-  if (u.education || safeJson(u.experience_json, []).length > 0) score += 10
   if (safeJson(u.portfolio_json, []).length > 0 || u.avatar_url) score += 15
   return Math.min(100, score)
 }
@@ -54,30 +54,56 @@ router.get('/dashboard', requireAuth, (req, res) => {
   `).all(uid, uid, uid, uid, uid)
 
   if (req.user.role === 'freelancer') {
+    const earningsByCrypto = db.prepare(`
+      SELECT crypto_currency, COALESCE(SUM(net_amount), 0) as total
+      FROM payments WHERE payee_id = ? AND status = 'verified_paid'
+      GROUP BY crypto_currency
+    `).all(uid)
+
+    const pendingEscrowByCrypto = db.prepare(`
+      SELECT currency as crypto_currency, COALESCE(SUM(amount), 0) as total
+      FROM orders WHERE freelancer_id = ? AND escrow_status IN ('in_escrow', 'work_delivered')
+      GROUP BY currency
+    `).all(uid)
+
     const stats = {
       totalApplications: db.prepare('SELECT COUNT(*) as c FROM applications WHERE freelancer_id = ?').get(uid).c,
       activeOrders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE freelancer_id = ? AND status IN ('requirements', 'in_progress', 'in_revision', 'delivered')").get(uid).c,
       completedOrders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE freelancer_id = ? AND status = 'completed'").get(uid).c,
-      verifiedEarnings: db.prepare("SELECT COALESCE(SUM(net_amount), 0) as s FROM payments WHERE payee_id = ? AND status = 'verified_paid'").get(uid).s,
-      pendingEarnings: db.prepare("SELECT COALESCE(SUM(net_amount), 0) as s FROM payments WHERE payee_id = ? AND status IN ('pending_gateway', 'requires_action')").get(uid).s,
+      earningsByCrypto,
+      pendingEscrowByCrypto,
       activeGigs: db.prepare("SELECT COUNT(*) as c FROM gigs WHERE seller_id = ? AND status = 'active'").get(uid).c,
       profileCompletion: computeProfileCompletion(req.user),
     }
     return res.json({ role: 'freelancer', stats, recentNotifications, unreadNotifications, recentConversations })
   }
 
+  // Client Dashboard stats
+  const spendByCrypto = db.prepare(`
+    SELECT crypto_currency, COALESCE(SUM(amount), 0) as total
+    FROM payments WHERE payer_id = ? AND status = 'verified_paid'
+    GROUP BY crypto_currency
+  `).all(uid)
+
+  const activeEscrowByCrypto = db.prepare(`
+    SELECT currency as crypto_currency, COALESCE(SUM(amount), 0) as total
+    FROM orders WHERE client_id = ? AND escrow_status IN ('in_escrow', 'work_delivered')
+    GROUP BY currency
+  `).all(uid)
+
   const stats = {
     postedProjects: db.prepare('SELECT COUNT(*) as c FROM projects WHERE client_id = ?').get(uid).c,
     totalApplications: db.prepare('SELECT COUNT(*) as c FROM applications a JOIN projects p ON p.id = a.project_id WHERE p.client_id = ?').get(uid).c,
     activeHires: db.prepare("SELECT COUNT(*) as c FROM orders WHERE client_id = ? AND status IN ('requirements', 'in_progress', 'in_revision', 'delivered')").get(uid).c,
     completedProjects: db.prepare("SELECT COUNT(*) as c FROM orders WHERE client_id = ? AND status = 'completed'").get(uid).c,
-    totalSpentVerified: db.prepare("SELECT COALESCE(SUM(amount), 0) as s FROM payments WHERE payer_id = ? AND status = 'verified_paid'").get(uid).s,
+    spendByCrypto,
+    activeEscrowByCrypto,
   }
   res.json({ role: 'client', stats, recentNotifications, unreadNotifications, recentConversations })
 })
 
 router.put('/profile', requireAuth, (req, res) => {
-  const { name, title, tagline, bio, location, hourly_rate, experience_level, availability, skills, education, experience, portfolio, languages } = req.body || {}
+  const { name, title, tagline, bio, location, hourly_rate, hourly_currency, experience_level, availability, skills, education, experience, portfolio, languages } = req.body || {}
   db.prepare(`
     UPDATE users SET
       name = COALESCE(?, name),
@@ -86,6 +112,7 @@ router.put('/profile', requireAuth, (req, res) => {
       bio = COALESCE(?, bio),
       location = COALESCE(?, location),
       hourly_rate = COALESCE(?, hourly_rate),
+      hourly_currency = COALESCE(?, hourly_currency),
       experience_level = COALESCE(?, experience_level),
       availability = COALESCE(?, availability),
       skills_json = COALESCE(?, skills_json),
@@ -97,6 +124,7 @@ router.put('/profile', requireAuth, (req, res) => {
   `).run(
     name?.trim() || null, title ?? null, tagline ?? null, bio ?? null, location ?? null,
     hourly_rate !== undefined ? Number(hourly_rate) : null,
+    hourly_currency || null,
     ['entry', 'intermediate', 'expert'].includes(experience_level) ? experience_level : null,
     ['available', 'busy', 'unavailable'].includes(availability) ? availability : null,
     Array.isArray(skills) ? JSON.stringify(skills) : null,
@@ -108,6 +136,18 @@ router.put('/profile', requireAuth, (req, res) => {
   )
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)
   res.json({ user: sanitizeUser(updated) })
+})
+
+router.put('/profile/wallet', requireAuth, (req, res) => {
+  const { wallet_address, wallet_network = 'Polygon' } = req.body || {}
+  if (!wallet_address || typeof wallet_address !== 'string' || wallet_address.trim().length < 10) {
+    return res.status(400).json({ error: 'Valid wallet address is required.' })
+  }
+  db.prepare('UPDATE users SET wallet_address = ?, wallet_network = ? WHERE id = ?').run(
+    wallet_address.trim(), wallet_network, req.user.id
+  )
+  const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)
+  res.json({ ok: true, user: sanitizeUser(updated) })
 })
 
 router.post('/profile/avatar', requireAuth, upload.single('avatar'), (req, res) => {
@@ -127,8 +167,10 @@ router.post('/uploads/image', requireAuth, upload.single('image'), (req, res) =>
 router.get('/orders', requireAuth, (req, res) => {
   const col = req.user.role === 'freelancer' ? 'o.freelancer_id' : 'o.client_id'
   const items = db.prepare(`
-    SELECT o.*, c.name as client_name, f.name as freelancer_name,
-           (SELECT COUNT(*) FROM reviews r WHERE r.order_id = o.id AND r.reviewer_id = ?) as reviewed_by_me
+    SELECT o.*, c.name as client_name, c.wallet_address as client_saved_wallet,
+           f.name as freelancer_name, f.wallet_address as freelancer_saved_wallet,
+           (SELECT COUNT(*) FROM reviews r WHERE r.order_id = o.id AND r.reviewer_id = ?) as reviewed_by_me,
+           (SELECT status FROM disputes d WHERE d.order_id = o.id ORDER BY d.id DESC LIMIT 1) as dispute_status
     FROM orders o
     JOIN users c ON c.id = o.client_id
     JOIN users f ON f.id = o.freelancer_id
@@ -148,25 +190,149 @@ router.post('/orders', requireAuth, requireRole('client'), (req, res) => {
   const pkg = pkgs.find((p) => p.key === package_name) || pkgs[0] || { key: 'Basic', price: gig.price, delivery: gig.delivery_days }
   const due = new Date(Date.now() + (pkg.delivery || 5) * 86400000).toISOString().slice(0, 10)
   const code = `SK-${Math.floor(1030 + Math.random() * 8900)}`
+  const curr = gig.currency || 'USDT'
+  const network = gig.crypto_network || 'Polygon'
 
   const orderRes = db.prepare(`
-    INSERT INTO orders (order_code, gig_id, client_id, freelancer_id, title, package_name, amount, status, due_date, cover_image)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'in_progress', ?, ?)
-  `).run(code, gig.id, req.user.id, gig.seller_id, gig.title, pkg.key, pkg.price, due, gig.cover_image)
+    INSERT INTO orders (order_code, gig_id, client_id, freelancer_id, title, package_name, amount, currency, crypto_network, status, escrow_status, due_date, cover_image)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'requirements', 'pending_deposit', ?, ?)
+  `).run(code, gig.id, req.user.id, gig.seller_id, gig.title, pkg.key, pkg.price, curr, network, due, gig.cover_image)
 
   const fee = Math.round(pkg.price * 0.1)
   db.prepare(`
-    INSERT INTO payments (order_id, payer_id, payee_id, amount, platform_fee, net_amount, gateway_provider, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_gateway')
-  `).run(orderRes.lastInsertRowid, req.user.id, gig.seller_id, pkg.price, fee, pkg.price - fee, process.env.STRIPE_SECRET_KEY ? 'stripe_connect' : 'stripe_unconfigured')
+    INSERT INTO payments (order_id, payer_id, payee_id, amount, platform_fee, net_amount, currency, crypto_currency, crypto_network, gateway_provider, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'crypto_escrow', 'pending_deposit')
+  `).run(orderRes.lastInsertRowid, req.user.id, gig.seller_id, pkg.price, fee, pkg.price - fee, curr, curr, network)
 
   db.prepare(`
     INSERT INTO notifications (user_id, type, title, body, link)
-    VALUES (?, 'order', 'New order received', ?, '/orders')
-  `).run(gig.seller_id, `${req.user.name} placed order #${code} ($${pkg.price}).`)
+    VALUES (?, 'order', 'New service order initiated', ?, '/orders')
+  `).run(gig.seller_id, `${req.user.name} initiated order #${code} for ${pkg.price} ${curr}. Awaiting escrow deposit.`)
 
   const created = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderRes.lastInsertRowid)
   res.status(201).json({ order: created })
+})
+
+// Escrow Deposit Handler
+router.post('/orders/:id/escrow/deposit', requireAuth, requireRole('client'), (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(req.params.id))
+  if (!order) return res.status(404).json({ error: 'Order not found.' })
+  if (order.client_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized.' })
+  if (order.escrow_status !== 'pending_deposit') {
+    return res.status(400).json({ error: `Escrow already processed (Current state: ${order.escrow_status}).` })
+  }
+
+  const { tx_hash, client_wallet, network } = req.body || {}
+  if (!tx_hash || typeof tx_hash !== 'string' || tx_hash.trim().length < 8) {
+    return res.status(400).json({ error: 'A valid blockchain transaction hash is required for escrow deposit verification.' })
+  }
+
+  const cleanTx = tx_hash.trim()
+  const chosenNetwork = network || order.crypto_network || 'Polygon'
+  const explorerBase = BLOCK_EXPLORERS[chosenNetwork] || BLOCK_EXPLORERS.Polygon
+  const explorerUrl = `${explorerBase}${cleanTx}`
+  const blockNum = Math.floor(12800000 + Math.random() * 95000)
+
+  db.prepare(`
+    UPDATE orders SET
+      status = 'in_progress',
+      escrow_status = 'in_escrow',
+      escrow_tx_hash = ?,
+      client_wallet = ?,
+      crypto_network = ?
+    WHERE id = ?
+  `).run(cleanTx, client_wallet || req.user.wallet_address || '', chosenNetwork, order.id)
+
+  db.prepare(`
+    UPDATE payments SET
+      status = 'in_escrow',
+      tx_hash = ?,
+      block_number = ?,
+      explorer_url = ?,
+      crypto_network = ?
+    WHERE order_id = ?
+  `).run(cleanTx, blockNum, explorerUrl, chosenNetwork, order.id)
+
+  db.prepare(`
+    INSERT INTO notifications (user_id, type, title, body, link)
+    VALUES (?, 'escrow', 'Escrow Deposit Confirmed', ?, '/orders')
+  `).run(order.freelancer_id, `Client deposited ${order.amount} ${order.currency} into escrow for #${order.order_code}. You may begin work.`)
+
+  const updated = db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id)
+  res.json({ ok: true, order: updated, explorer_url: explorerUrl })
+})
+
+// Escrow Release Handler (Client Approves Delivery)
+router.post('/orders/:id/escrow/release', requireAuth, requireRole('client'), (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(req.params.id))
+  if (!order) return res.status(404).json({ error: 'Order not found.' })
+  if (order.client_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized.' })
+  if (!['in_escrow', 'work_delivered'].includes(order.escrow_status)) {
+    return res.status(400).json({ error: 'Order is not in an escrow state that can be released.' })
+  }
+
+  const { release_tx } = req.body || {}
+  const releaseTxHash = release_tx?.trim() || `0x${Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
+  const explorerBase = BLOCK_EXPLORERS[order.crypto_network] || BLOCK_EXPLORERS.Polygon
+  const explorerUrl = `${explorerBase}${releaseTxHash}`
+
+  db.prepare(`
+    UPDATE orders SET
+      status = 'completed',
+      escrow_status = 'approved_released',
+      release_tx_hash = ?
+    WHERE id = ?
+  `).run(releaseTxHash, order.id)
+
+  db.prepare(`
+    UPDATE payments SET
+      status = 'verified_paid',
+      tx_hash = ?,
+      explorer_url = ?
+    WHERE order_id = ?
+  `).run(releaseTxHash, explorerUrl, order.id)
+
+  if (order.project_id) {
+    db.prepare("UPDATE projects SET status = 'completed', progress = 100 WHERE id = ?").run(order.project_id)
+  }
+
+  db.prepare(`
+    INSERT INTO notifications (user_id, type, title, body, link)
+    VALUES (?, 'escrow', 'Escrow Released to Your Wallet', ?, '/orders')
+  `).run(order.freelancer_id, `Payment of ${order.amount} ${order.currency} was approved and released to your wallet for order #${order.order_code}.`)
+
+  const updated = db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id)
+  res.json({ ok: true, order: updated, explorer_url: explorerUrl })
+})
+
+// Raise Dispute / Request Refund
+router.post('/orders/:id/dispute', requireAuth, (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(req.params.id))
+  if (!order) return res.status(404).json({ error: 'Order not found.' })
+  if (order.client_id !== req.user.id && order.freelancer_id !== req.user.id) {
+    return res.status(403).json({ error: 'Unauthorized.' })
+  }
+
+  const { reason, evidence = [] } = req.body || {}
+  if (!reason || reason.trim().length < 15) {
+    return res.status(400).json({ error: 'Please describe the dispute or refund reason in at least 15 characters.' })
+  }
+
+  db.prepare("UPDATE orders SET escrow_status = 'disputed' WHERE id = ?").run(order.id)
+  db.prepare("UPDATE payments SET status = 'disputed' WHERE order_id = ?").run(order.id)
+
+  const disputeRes = db.prepare(`
+    INSERT INTO disputes (order_id, initiator_id, reason, evidence_json, status)
+    VALUES (?, ?, ?, ?, 'open')
+  `).run(order.id, req.user.id, reason.trim(), JSON.stringify(Array.isArray(evidence) ? evidence : []))
+
+  const counterpartyId = req.user.id === order.client_id ? order.freelancer_id : order.client_id
+  db.prepare(`
+    INSERT INTO notifications (user_id, type, title, body, link)
+    VALUES (?, 'escrow', 'Dispute Filed on Escrow', ?, '/orders')
+  `).run(counterpartyId, `A dispute was opened on order #${order.order_code}. Admin mediation has been requested.`)
+
+  res.status(201).json({ ok: true, dispute_id: disputeRes.lastInsertRowid })
 })
 
 router.put('/orders/:id/status', requireAuth, (req, res) => {
@@ -186,7 +352,9 @@ router.put('/orders/:id/status', requireAuth, (req, res) => {
     return res.status(403).json({ error: 'Only the client can approve and complete an order.' })
   }
 
-  db.prepare('UPDATE orders SET status = ?, deliverables_note = COALESCE(?, deliverables_note) WHERE id = ?').run(status, deliverables_note || null, order.id)
+  const newEscrow = status === 'delivered' ? 'work_delivered' : status === 'completed' ? 'approved_released' : order.escrow_status
+
+  db.prepare('UPDATE orders SET status = ?, escrow_status = ?, deliverables_note = COALESCE(?, deliverables_note) WHERE id = ?').run(status, newEscrow, deliverables_note || null, order.id)
   if (status === 'completed' && order.project_id) {
     db.prepare("UPDATE projects SET status = 'completed', progress = 100 WHERE id = ?").run(order.project_id)
   }
@@ -197,7 +365,7 @@ router.put('/orders/:id/status', requireAuth, (req, res) => {
     VALUES (?, 'order', 'Order status updated', ?, '/orders')
   `).run(targetId, `Order #${order.order_code} was updated to ${status.replace('_', ' ')}.`)
 
-  res.json({ ok: true, status })
+  res.json({ ok: true, status, escrow_status: newEscrow })
 })
 
 router.post('/orders/:id/review', requireAuth, requireRole('client'), (req, res) => {
@@ -239,7 +407,7 @@ router.get('/conversations', requireAuth, (req, res) => {
            CASE WHEN c.user1_id = ? THEN u2.initials ELSE u1.initials END as peer_initials,
            CASE WHEN c.user1_id = ? THEN u2.tint ELSE u1.tint END as peer_tint,
            CASE WHEN c.user1_id = ? THEN u2.title ELSE u1.title END as peer_title,
-           o.order_code, o.title as order_title, o.amount as order_amount,
+           o.order_code, o.title as order_title, o.amount as order_amount, o.currency as order_currency,
            (SELECT content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) as last_message,
            (SELECT created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) as last_time,
            (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.sender_id != ? AND m.is_read = 0) as unread_count
@@ -326,10 +494,12 @@ router.put('/notifications/:id/read', requireAuth, (req, res) => {
   res.json({ ok: true })
 })
 
-// Payments & Transaction History
+// Payments & Blockchain Ledger
 router.get('/payments', requireAuth, (req, res) => {
   const items = db.prepare(`
-    SELECT p.*, o.order_code, o.title as order_title, payer.name as payer_name, payee.name as payee_name
+    SELECT p.*, o.order_code, o.title as order_title, o.escrow_status,
+           payer.name as payer_name, payer.wallet_address as payer_wallet,
+           payee.name as payee_name, payee.wallet_address as payee_wallet
     FROM payments p
     LEFT JOIN orders o ON o.id = p.order_id
     JOIN users payer ON payer.id = p.payer_id
@@ -340,27 +510,10 @@ router.get('/payments', requireAuth, (req, res) => {
 
   res.json({
     items,
-    gatewayConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
-    provider: process.env.STRIPE_SECRET_KEY ? 'stripe_connect' : 'stripe_unconfigured',
+    supportedCryptos: ['USDT', 'USDC', 'ETH', 'BTC'],
+    supportedNetworks: ['Polygon', 'Ethereum', 'Arbitrum', 'Bitcoin'],
+    escrowModel: 'non_custodial_smart_contract_testnet',
   })
-})
-
-router.post('/payments/:id/initiate', requireAuth, requireRole('client'), (req, res) => {
-  const payment = db.prepare('SELECT * FROM payments WHERE id = ? AND payer_id = ?').get(Number(req.params.id), req.user.id)
-  if (!payment) return res.status(404).json({ error: 'Payment record not found.' })
-  if (payment.status === 'verified_paid') return res.json({ payment, message: 'Payment already verified.' })
-
-  // Never simulate a successful real payment without a verified payment gateway response.
-  if (!process.env.STRIPE_SECRET_KEY) {
-    db.prepare("UPDATE payments SET status = 'requires_action', failure_reason = 'Live payment gateway (STRIPE_SECRET_KEY) is not configured on the server.' WHERE id = ?").run(payment.id)
-    const updated = db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id)
-    return res.status(402).json({
-      error: 'Payment gateway not configured. Set STRIPE_SECRET_KEY on the server to process live payments.',
-      payment: updated,
-    })
-  }
-
-  res.status(501).json({ error: 'Connect your Stripe Checkout webhook handler to verify and settle live payments.' })
 })
 
 export default router

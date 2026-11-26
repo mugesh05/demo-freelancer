@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { MapPin, MessageSquare } from 'lucide-react'
+import { MapPin, MessageSquare, ShieldCheck } from 'lucide-react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -71,13 +71,16 @@ export default function FreelancerProfile() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderTop: '1px solid var(--sk-border)', borderBottom: '1px solid var(--sk-border)', marginBottom: 16, fontSize: 14 }}>
               <span>★ <strong>{Number(f.rating).toFixed(1)}</strong> ({f.review_count})</span>
-              <strong>${f.hourly_rate}/hr</strong>
+              <strong style={{ color: 'var(--sk-primary)' }}>{f.hourly_rate} {f.hourly_currency || 'USDT'}/hr</strong>
             </div>
 
             <div style={{ fontSize: 13, color: 'var(--sk-muted)', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><MapPin size={14} /> {f.location}</span>
               <span>Level: <strong style={{ color: 'var(--sk-ink)' }}>{f.experience_level}</strong></span>
               {f.education && <span>Education: <strong style={{ color: 'var(--sk-ink)' }}>{f.education}</strong></span>}
+              {f.wallet_address && (
+                <span>Wallet: <code style={{ fontSize: 11 }}>{f.wallet_address.slice(0, 6)}...{f.wallet_address.slice(-4)}</code></span>
+              )}
             </div>
 
             {user?.id !== f.id && (
@@ -95,37 +98,27 @@ export default function FreelancerProfile() {
             </section>
 
             <section className="sk-card">
-              <h2 style={{ margin: '0 0 12px', fontSize: 20 }}>Skills</h2>
+              <h2 style={{ margin: '0 0 12px', fontSize: 20 }}>Skills &amp; Technologies</h2>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {(f.skills || []).map((s) => <span key={s} className="sk-badge blue">{s}</span>)}
               </div>
             </section>
 
-            {f.portfolio?.length > 0 && (
+            {gigs?.length > 0 && (
               <section className="sk-card">
-                <h2 style={{ margin: '0 0 14px', fontSize: 20 }}>Portfolio</h2>
-                <div className="sk-grid-3">
-                  {f.portfolio.map((item, i) => (
-                    <div key={i} className="sk-card" style={{ padding: 0, overflow: 'hidden' }}>
-                      <img src={item.image} alt={item.title} style={{ width: '100%', height: 140, objectFit: 'cover' }} />
-                      <div style={{ padding: 12 }}>
-                        <strong style={{ display: 'block', fontSize: 14 }}>{item.title}</strong>
-                        <span style={{ fontSize: 12, color: 'var(--sk-muted)' }}>{item.category}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {gigs.length > 0 && (
-              <section className="sk-card">
-                <h2 style={{ margin: '0 0 14px', fontSize: 20 }}>Services offered</h2>
+                <h2 style={{ margin: '0 0 16px', fontSize: 20 }}>Services by {f.name.split(' ')[0]}</h2>
                 <div className="sk-grid-2">
                   {gigs.map((g) => (
-                    <Link key={g.id} to={`/services/${g.slug}`} className="sk-card" style={{ padding: 14 }}>
-                      <strong style={{ display: 'block', marginBottom: 6 }}>{g.title}</strong>
-                      <span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>From ${g.price} · {g.delivery_days} days</span>
+                    <Link key={g.id} to={`/services/${g.slug}`} className="sk-card" style={{ padding: 0, overflow: 'hidden' }}>
+                      <img src={g.cover_image} alt={g.title} style={{ width: '100%', height: 140, objectFit: 'cover' }} />
+                      <div style={{ padding: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span className={`sk-crypto-badge ${(g.currency || 'USDT').toLowerCase()}`}>{g.currency || 'USDT'}</span>
+                          <span style={{ fontSize: 12, color: 'var(--sk-muted)' }}>★ {Number(g.rating || 5).toFixed(1)}</span>
+                        </div>
+                        <strong style={{ display: 'block', fontSize: 14, marginBottom: 6 }}>{g.title}</strong>
+                        <span style={{ fontSize: 13, color: 'var(--sk-ink)', fontWeight: 700 }}>From {g.price} {g.currency || 'USDT'}</span>
+                      </div>
                     </Link>
                   ))}
                 </div>
@@ -133,9 +126,9 @@ export default function FreelancerProfile() {
             )}
 
             <section className="sk-card">
-              <h2 style={{ margin: '0 0 14px', fontSize: 20 }}>Client reviews ({reviews.length})</h2>
+              <h2 style={{ margin: '0 0 16px', fontSize: 20 }}>Client Reviews ({reviews.length})</h2>
               {reviews.length === 0 ? (
-                <p style={{ margin: 0, color: 'var(--sk-muted)' }}>No reviews yet.</p>
+                <p style={{ color: 'var(--sk-muted)', margin: 0 }}>No reviews yet.</p>
               ) : (
                 reviews.map((r) => (
                   <div key={r.id} style={{ padding: '12px 0', borderTop: '1px solid var(--sk-border)' }}>
@@ -152,7 +145,7 @@ export default function FreelancerProfile() {
         </div>
       </main>
       <Footer />
-      <style>{`@media (max-width: 900px) { .sk-profile-grid { grid-template-columns: 1fr !important; } }`}</style>
+      <style>{`@media (max-width: 860px) { .sk-profile-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
   )
 }

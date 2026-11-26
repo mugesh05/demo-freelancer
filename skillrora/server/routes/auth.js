@@ -19,7 +19,7 @@ function makeInitials(name) {
 }
 
 router.post('/register', (req, res) => {
-  const { name, email, password, role, title } = req.body || {}
+  const { name, email, password, role, title, wallet_address = '' } = req.body || {}
   if (!name || typeof name !== 'string' || name.trim().length < 2) {
     return res.status(400).json({ error: 'Full name must be at least 2 characters.' })
   }
@@ -29,8 +29,8 @@ router.post('/register', (req, res) => {
   if (!password || String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' })
   }
-  if (!['client', 'freelancer'].includes(role)) {
-    return res.status(400).json({ error: 'Please select a valid role: client or freelancer.' })
+  if (!['client', 'freelancer', 'admin'].includes(role)) {
+    return res.status(400).json({ error: 'Please select a valid role.' })
   }
 
   const normalizedEmail = String(email).trim().toLowerCase()
@@ -42,12 +42,12 @@ router.post('/register', (req, res) => {
   const passwordHash = bcrypt.hashSync(String(password), 10)
   const initials = makeInitials(name)
   const tint = TINTS[Math.floor(Math.random() * TINTS.length)]
-  const defaultTitle = title?.trim() || (role === 'freelancer' ? 'Independent Freelancer' : 'Client')
+  const defaultTitle = title?.trim() || (role === 'freelancer' ? 'Independent Freelancer' : role === 'admin' ? 'Administrator' : 'Client')
 
   const result = db.prepare(`
-    INSERT INTO users (name, email, password_hash, role, initials, tint, title)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(name.trim(), normalizedEmail, passwordHash, role, initials, tint, defaultTitle)
+    INSERT INTO users (name, email, password_hash, role, initials, tint, title, wallet_address)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(name.trim(), normalizedEmail, passwordHash, role, initials, tint, defaultTitle, wallet_address.trim())
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid)
 
@@ -59,7 +59,7 @@ router.post('/register', (req, res) => {
     role === 'freelancer'
       ? 'Complete your freelancer profile and publish your first gig to start getting hired.'
       : 'Post your first project or explore vetted freelancers to get started.',
-    role === 'freelancer' ? '/dashboard' : '/client-dashboard'
+    role === 'freelancer' ? '/dashboard' : role === 'admin' ? '/admin' : '/client-dashboard'
   )
 
   const token = signToken(user)

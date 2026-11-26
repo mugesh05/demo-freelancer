@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.js'
 import marketplaceRoutes from './routes/marketplace.js'
 import projectRoutes from './routes/projects.js'
 import workspaceRoutes from './routes/workspace.js'
+import adminRoutes from './routes/admin.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.resolve(__dirname, '../dist')
@@ -37,6 +38,7 @@ app.use('/api/auth', authLimiter, authRoutes)
 app.use('/api', marketplaceRoutes)
 app.use('/api', projectRoutes)
 app.use('/api', workspaceRoutes)
+app.use('/api/admin', adminRoutes)
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'skillrora-api' })

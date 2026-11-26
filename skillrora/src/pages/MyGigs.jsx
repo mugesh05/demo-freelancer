@@ -72,7 +72,10 @@ export default function MyGigs() {
                     <h3 style={{ margin: '0 0 10px', fontSize: 16 }}>{g.title}</h3>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: '1px solid var(--sk-border)' }}>
-                    <strong>From ${g.price}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className={`sk-crypto-badge ${(g.currency || 'USDT').toLowerCase()}`}>{g.currency || 'USDT'}</span>
+                      <strong style={{ fontSize: 15 }}>{g.price}</strong>
+                    </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <Link to={`/create-gig/${g.id}`} className="sk-btn sk-btn-outline sk-btn-sm">Edit</Link>
                       <button type="button" className="sk-btn sk-btn-danger sk-btn-sm" aria-label="Delete gig" onClick={() => remove(g.id)}><Trash2 size={14} /></button>

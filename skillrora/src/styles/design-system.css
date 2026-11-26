@@ -380,3 +380,107 @@ button, input, select, textarea { font-family: inherit; }
   .sk-footer-inner { grid-template-columns: 1fr; }
   .sk-container { padding: 20px 16px; }
 }
+
+/* Crypto Badges & Escrow Styling */
+.sk-crypto-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.sk-crypto-badge.usdt { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.sk-crypto-badge.usdc { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.sk-crypto-badge.eth { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+.sk-crypto-badge.btc { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+
+.sk-escrow-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sk-escrow-badge.in_escrow { background: #eff6ff; color: #2563eb; border: 1px solid #93c5fd; }
+.sk-escrow-badge.pending_deposit { background: #fffbeb; color: #d97706; border: 1px solid #fcd34d; }
+.sk-escrow-badge.work_delivered { background: #fdf4ff; color: #a21caf; border: 1px solid #f0abfc; }
+.sk-escrow-badge.approved_released { background: #ecfdf5; color: #059669; border: 1px solid #6ee7b7; }
+.sk-escrow-badge.disputed { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+.sk-escrow-badge.refunded { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+
+/* Language & Wallet Selectors in Header */
+.sk-lang-select {
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--sk-border);
+  background: var(--sk-surface);
+  color: var(--sk-ink);
+  cursor: pointer;
+  outline: none;
+}
+.sk-lang-select:focus { border-color: var(--sk-primary); }
+
+.sk-wallet-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid #cbd5e1;
+  background: var(--sk-surface);
+  color: var(--sk-ink);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sk-wallet-btn:hover {
+  background: var(--sk-surface-soft);
+  border-color: var(--sk-primary);
+}
+.sk-wallet-btn.connected {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+.sk-wallet-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+/* RTL Layout Support for Arabic */
+[dir="rtl"] {
+  text-align: right;
+}
+[dir="rtl"] .sk-header-inner,
+[dir="rtl"] .sk-nav,
+[dir="rtl"] .sk-header-actions,
+[dir="rtl"] .sk-footer-bottom {
+  flex-direction: row-reverse;
+}
+[dir="rtl"] .sk-brand {
+  margin-left: 20px;
+  margin-right: 0;
+}
+[dir="rtl"] .sk-brand-mark {
+  margin-left: 8px;
+  margin-right: 0;
+}
+[dir="rtl"] .sk-badge {
+  direction: rtl;
+}
+[dir="rtl"] input, [dir="rtl"] textarea, [dir="rtl"] select {
+  text-align: right;
+}
+

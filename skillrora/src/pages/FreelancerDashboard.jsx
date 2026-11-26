@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Upload } from 'lucide-react'
+import { Upload, ShieldCheck, Coins, Wallet } from 'lucide-react'
 import Header from '../components/Header.jsx'
 import Footer from '../components/Footer.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import { useWallet } from '../context/WalletContext.jsx'
 import { api } from '../lib/api.js'
+
+const CRYPTO_CURRENCIES = ['USDT', 'USDC', 'ETH', 'BTC']
 
 export default function FreelancerDashboard() {
   const { user, setUser } = useAuth()
+  const { account, isConnected, connectWeb3 } = useWallet()
   const [dash, setDash] = useState(null)
   const [apps, setApps] = useState([])
   const [editing, setEditing] = useState(false)
@@ -16,8 +20,9 @@ export default function FreelancerDashboard() {
     title: user?.title || '',
     tagline: user?.tagline || '',
     bio: user?.bio || '',
-    location: user?.location || 'United States',
+    location: user?.location || 'Global',
     hourly_rate: user?.hourly_rate || 45,
+    hourly_currency: user?.hourly_currency || 'USDT',
     experience_level: user?.experience_level || 'intermediate',
     availability: user?.availability || 'available',
     education: user?.education || '',
@@ -39,7 +44,11 @@ export default function FreelancerDashboard() {
       const skills = form.skillsText.split(',').map((s) => s.trim()).filter(Boolean)
       const res = await api('/api/profile', {
         method: 'PUT',
-        body: { ...form, hourly_rate: Number(form.hourly_rate), skills },
+        body: {
+          ...form,
+          hourly_rate: Number(form.hourly_rate),
+          skills,
+        },
       })
       setUser(res.user)
       setEditing(false)
@@ -73,22 +82,43 @@ export default function FreelancerDashboard() {
       <main className="sk-container">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 24 }}>
           <div>
-            <span className="sk-badge blue" style={{ marginBottom: 6 }}>FREELANCER DASHBOARD</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+              <span className="sk-badge blue">FREELANCER CONSOLE</span>
+              <span className="sk-escrow-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <ShieldCheck size={13} /> Direct Wallet Settlement
+              </span>
+            </div>
             <h1 style={{ margin: 0, fontSize: 28 }}>Welcome back, {user?.name}</h1>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Link to="/my-gigs" className="sk-btn sk-btn-outline">My Gigs</Link>
-            <Link to="/create-gig" className="sk-btn sk-btn-primary">+ Create Gig</Link>
+            <Link to="/create-gig" className="sk-btn sk-btn-primary">+ Create Crypto Gig</Link>
           </div>
         </div>
 
         {msg.text && <div className={`sk-alert ${msg.type}`}>{msg.text}</div>}
 
+        {/* Dashboard Stats */}
         <div className="sk-grid-4" style={{ marginBottom: 28 }}>
-          <div className="sk-card"><span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>Total Applications</span><strong style={{ display: 'block', fontSize: 28, marginTop: 6 }}>{s.totalApplications ?? 0}</strong></div>
-          <div className="sk-card"><span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>Active Orders</span><strong style={{ display: 'block', fontSize: 28, marginTop: 6 }}>{s.activeOrders ?? 0}</strong></div>
-          <div className="sk-card"><span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>Completed Projects</span><strong style={{ display: 'block', fontSize: 28, marginTop: 6 }}>{s.completedOrders ?? 0}</strong></div>
-          <div className="sk-card"><span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>Verified Earnings</span><strong style={{ display: 'block', fontSize: 28, marginTop: 6 }}>${s.verifiedEarnings ?? 0}</strong></div>
+          <div className="sk-card">
+            <span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>Proposals Submitted</span>
+            <strong style={{ display: 'block', fontSize: 28, marginTop: 6 }}>{s.totalApplications ?? 0}</strong>
+          </div>
+          <div className="sk-card">
+            <span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>Active Escrow Orders</span>
+            <strong style={{ display: 'block', fontSize: 28, marginTop: 6 }}>{s.activeOrders ?? 0}</strong>
+          </div>
+          <div className="sk-card">
+            <span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>Completed Deliverables</span>
+            <strong style={{ display: 'block', fontSize: 28, marginTop: 6 }}>{s.completedOrders ?? 0}</strong>
+          </div>
+          <div className="sk-card">
+            <span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>Verified Crypto Earnings</span>
+            <strong style={{ display: 'block', fontSize: 28, marginTop: 6 }}>
+              {s.verifiedEarnings ?? 0} <span style={{ fontSize: 16 }}>USDT</span>
+            </strong>
+            <span style={{ fontSize: 11, color: 'var(--sk-muted)' }}>Paid directly to wallet</span>
+          </div>
         </div>
 
         <div className="sk-grid-2" style={{ alignItems: 'start', marginBottom: 28 }}>
@@ -112,14 +142,26 @@ export default function FreelancerDashboard() {
                   </span>
                   <div>
                     <strong style={{ display: 'block', fontSize: 17 }}>{user?.name}</strong>
-                    <span style={{ display: 'block', fontSize: 14, color: 'var(--sk-muted)' }}>{user?.title} · ${user?.hourly_rate}/hr</span>
-                    <span className={`sk-badge ${user?.availability === 'available' ? 'green' : 'amber'}`} style={{ marginTop: 6 }}>{user?.availability}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}>
+                      <span style={{ fontSize: 14, color: 'var(--sk-muted)' }}>{user?.title}</span>
+                      <span className="sk-badge green">{user?.hourly_rate} {user?.hourly_currency || 'USDT'}/hr</span>
+                    </div>
+                    <span className={`sk-badge ${user?.availability === 'available' ? 'green' : 'amber'}`}>{user?.availability}</span>
                   </div>
                 </div>
-                <label className="sk-btn sk-btn-outline sk-btn-sm" style={{ marginBottom: 14, cursor: 'pointer' }}>
-                  <Upload size={14} /> Upload Photo
-                  <input type="file" accept="image/*" onChange={uploadAvatar} style={{ display: 'none' }} />
-                </label>
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                  <label className="sk-btn sk-btn-outline sk-btn-sm" style={{ cursor: 'pointer' }}>
+                    <Upload size={14} /> Upload Photo
+                    <input type="file" accept="image/*" onChange={uploadAvatar} style={{ display: 'none' }} />
+                  </label>
+                  {user?.wallet_address && (
+                    <span style={{ fontSize: 12, padding: '4px 8px', background: 'var(--sk-surface-2)', borderRadius: 6, fontFamily: 'monospace', alignSelf: 'center' }}>
+                      Wallet: {user.wallet_address.slice(0, 8)}...{user.wallet_address.slice(-6)}
+                    </span>
+                  )}
+                </div>
+
                 <p style={{ fontSize: 14, color: 'var(--sk-ink-2)', lineHeight: 1.6 }}>{user?.bio || 'Add a professional bio to stand out to clients.'}</p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
                   {(user?.skills || []).map((sk) => <span key={sk} className="sk-badge blue">{sk}</span>)}
@@ -129,26 +171,43 @@ export default function FreelancerDashboard() {
               <form onSubmit={saveProfile}>
                 <div className="sk-grid-2">
                   <div className="sk-field"><label>Full Name</label><input className="sk-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
-                  <div className="sk-field"><label>Headline</label><input className="sk-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
-                  <div className="sk-field"><label>Hourly Rate ($)</label><input className="sk-input" type="number" min="5" value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} /></div>
+                  <div className="sk-field"><label>Professional Headline</label><input className="sk-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
                   <div className="sk-field">
-                    <label>Availability</label>
-                    <select className="sk-select" value={form.availability} onChange={(e) => setForm({ ...form, availability: e.target.value })}>
-                      <option value="available">Available</option>
-                      <option value="busy">Busy</option>
-                      <option value="unavailable">Unavailable</option>
+                    <label>Hourly Rate</label>
+                    <input className="sk-input" type="number" min="1" step="any" value={form.hourly_rate} onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })} />
+                  </div>
+                  <div className="sk-field">
+                    <label>Rate Currency</label>
+                    <select className="sk-select" value={form.hourly_currency} onChange={(e) => setForm({ ...form, hourly_currency: e.target.value })}>
+                      {CRYPTO_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 </div>
-                <div className="sk-field"><label>Skills (comma separated)</label><input className="sk-input" value={form.skillsText} onChange={(e) => setForm({ ...form, skillsText: e.target.value })} /></div>
-                <div className="sk-field"><label>Education</label><input className="sk-input" value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })} /></div>
-                <div className="sk-field"><label>Bio</label><textarea className="sk-textarea" rows={3} value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} /></div>
+
+                <div className="sk-grid-2">
+                  <div className="sk-field">
+                    <label>Availability</label>
+                    <select className="sk-select" value={form.availability} onChange={(e) => setForm({ ...form, availability: e.target.value })}>
+                      <option value="available">Available for Contracts</option>
+                      <option value="busy">Busy with Projects</option>
+                      <option value="unavailable">Unavailable</option>
+                    </select>
+                  </div>
+                  <div className="sk-field">
+                    <label>Location</label>
+                    <input className="sk-input" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. Remote, Singapore, London" />
+                  </div>
+                </div>
+
+                <div className="sk-field"><label>Skills (comma separated)</label><input className="sk-input" value={form.skillsText} onChange={(e) => setForm({ ...form, skillsText: e.target.value })} placeholder="Solidity, Rust, React, Web3.js" /></div>
+                <div className="sk-field"><label>Education / Certifications</label><input className="sk-input" value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })} /></div>
+                <div className="sk-field"><label>Professional Bio</label><textarea className="sk-textarea" rows={3} value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} /></div>
                 <button type="submit" className="sk-btn sk-btn-primary">Save Profile</button>
               </form>
             )}
           </section>
 
-          {/* Recent Messages & Notifications */}
+          {/* Messages & Notifications */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <section className="sk-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -186,11 +245,11 @@ export default function FreelancerDashboard() {
         {/* My Applications */}
         <section className="sk-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h2 style={{ margin: 0, fontSize: 20 }}>My Project Applications</h2>
-            <Link to="/projects" className="sk-btn sk-btn-outline sk-btn-sm">Browse Open Projects</Link>
+            <h2 style={{ margin: 0, fontSize: 20 }}>My Crypto Job Proposals</h2>
+            <Link to="/projects" className="sk-btn sk-btn-outline sk-btn-sm">Browse Open Jobs</Link>
           </div>
           {apps.length === 0 ? (
-            <p style={{ color: 'var(--sk-muted)', margin: 0 }}>You haven&rsquo;t applied to any projects yet.</p>
+            <p style={{ color: 'var(--sk-muted)', margin: 0 }}>You haven&rsquo;t applied to any crypto jobs yet.</p>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -198,19 +257,35 @@ export default function FreelancerDashboard() {
                   <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sk-border)', color: 'var(--sk-muted)' }}>
                     <th style={{ padding: '10px 8px' }}>Project</th>
                     <th style={{ padding: '10px 8px' }}>Client</th>
-                    <th style={{ padding: '10px 8px' }}>Proposed</th>
+                    <th style={{ padding: '10px 8px' }}>Proposed Bid</th>
+                    <th style={{ padding: '10px 8px' }}>Timeline</th>
                     <th style={{ padding: '10px 8px' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {apps.map((a) => (
-                    <tr key={a.id} style={{ borderBottom: '1px solid var(--sk-border)' }}>
-                      <td style={{ padding: '12px 8px' }}><Link to={`/projects/${a.project_id}`} style={{ fontWeight: 700, color: 'var(--sk-primary)' }}>{a.project_title}</Link></td>
-                      <td style={{ padding: '12px 8px' }}>{a.client_name}</td>
-                      <td style={{ padding: '12px 8px' }}>${a.proposed_budget} · {a.delivery_days}d</td>
-                      <td style={{ padding: '12px 8px' }}><span className={`sk-badge ${a.status === 'accepted' ? 'green' : a.status === 'shortlisted' ? 'blue' : a.status === 'rejected' ? 'red' : 'gray'}`}>{a.status}</span></td>
-                    </tr>
-                  ))}
+                  {apps.map((a) => {
+                    const curr = a.currency || 'USDT'
+                    return (
+                      <tr key={a.id} style={{ borderBottom: '1px solid var(--sk-border)' }}>
+                        <td style={{ padding: '12px 8px' }}>
+                          <Link to={`/projects/${a.project_id}`} style={{ fontWeight: 700, color: 'var(--sk-primary)' }}>
+                            {a.project_title}
+                          </Link>
+                        </td>
+                        <td style={{ padding: '12px 8px' }}>{a.client_name}</td>
+                        <td style={{ padding: '12px 8px', fontWeight: 600 }}>
+                          <span className={`sk-crypto-badge ${curr.toLowerCase()}`} style={{ marginRight: 6 }}>{curr}</span>
+                          {a.proposed_budget}
+                        </td>
+                        <td style={{ padding: '12px 8px', color: 'var(--sk-muted)' }}>{a.delivery_days} days</td>
+                        <td style={{ padding: '12px 8px' }}>
+                          <span className={`sk-badge ${a.status === 'accepted' ? 'green' : a.status === 'shortlisted' ? 'blue' : a.status === 'rejected' ? 'red' : 'gray'}`}>
+                            {a.status}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

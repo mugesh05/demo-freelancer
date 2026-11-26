@@ -1,44 +1,46 @@
 import { Link } from 'react-router-dom'
 
-const home = [
-  ['Explore', ['Categories', 'Top Talent', 'Projects']],
-  ['Company', ['About', 'Careers', 'Press']],
-  ['Support', ['Help Center', 'Trust & Safety']],
-]
-const full = [
-  ['Explore', ['Development & Tech', 'Design & Creative', 'Digital Marketing', 'Writing & Translation']],
-  ['For clients', ['How It Works', 'Success Stories', 'Talent Solutions']],
-  ['For freelancers', ['Become a Freelancer', 'Community', 'Resources']],
-  ['Company', ['About Us', 'Careers', 'Contact']],
-]
-
-export default function Footer({ variant = 'full', social = false }) {
-  const cols = variant === 'home' ? home : full
+export default function Footer() {
   return (
-    <>
-      <footer className="site-footer">
-        <div className="footer-brand">
-          <Link className="brand" to="/"><i />skillrora</Link>
-          <p>
-            {variant === 'home'
-              ? <>Where great ideas meet<br />great talent.</>
-              : <>A world of talent.<br />Ready for your next big idea.</>}
-          </p>
-          {social && <div className="social"><span>in</span><span>◎</span><span>𝕏</span></div>}
+    <footer className="sk-footer">
+      <div className="sk-footer-inner">
+        <div>
+          <Link className="sk-brand" to="/"><span className="sk-brand-mark">S</span><span>Skillrora</span></Link>
+          <p>The modern freelance marketplace connecting ambitious teams with vetted independent talent worldwide.</p>
         </div>
-        {cols.map(([title, links]) => (
-          <div className="footer-col" key={title}>
-            <b>{title}</b>
-            {links.map((l) => <a href="#" key={l}>{l}</a>)}
-          </div>
-        ))}
-      </footer>
-      {variant === 'full' && (
-        <div className="bottom-bar">
-          <span>© 2025 Skillrora. All rights reserved.</span>
-          <span>Privacy Policy&nbsp;&nbsp; Terms of Service&nbsp;&nbsp; Cookies{social && <>&nbsp;&nbsp; English ▾</>}</span>
+        <div>
+          <h4>Categories</h4>
+          <Link to="/explore?cat=Web%20Development">Web Development</Link>
+          <Link to="/explore?cat=UI%2FUX%20Design">UI/UX Design</Link>
+          <Link to="/explore?cat=Graphic%20Design">Brand &amp; Graphic Design</Link>
+          <Link to="/explore?cat=AI%20%26%20Automation">AI &amp; Automation</Link>
         </div>
-      )}
-    </>
+        <div>
+          <h4>For Clients</h4>
+          <Link to="/projects">Post &amp; Browse Projects</Link>
+          <Link to="/talent">Find Freelancers</Link>
+          <Link to="/client-dashboard">Client Dashboard</Link>
+          <Link to="/payments">Payments &amp; Escrow</Link>
+        </div>
+        <div>
+          <h4>For Freelancers</h4>
+          <Link to="/signup?role=freelancer">Become a Freelancer</Link>
+          <Link to="/create-gig">Create a Service Gig</Link>
+          <Link to="/dashboard">Freelancer Dashboard</Link>
+          <Link to="/my-gigs">Manage Gigs</Link>
+        </div>
+        <div>
+          <h4>Account</h4>
+          <Link to="/login">Log in</Link>
+          <Link to="/signup">Create Account</Link>
+          <Link to="/forgot-password">Reset Password</Link>
+          <Link to="/messages">Messages</Link>
+        </div>
+      </div>
+      <div className="sk-footer-bottom">
+        <span>© {new Date().getFullYear()} Skillrora. All rights reserved.</span>
+        <span>Built for transparent, secure freelance collaboration.</span>
+      </div>
+    </footer>
   )
 }

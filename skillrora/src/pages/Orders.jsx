@@ -1,79 +1,165 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import SellerHeader, { SellerFooter } from '../components/SellerHeader.jsx'
-import useToast from '../components/useToast.jsx'
-import { orders } from '../data/seller.js'
+import Header from '../components/Header.jsx'
+import Footer from '../components/Footer.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
+import { api } from '../lib/api.js'
 
-const PER = 6
-const TABS = [['all', 'All orders (26)'], ['active', 'Active (4)'], ['delivered', 'Delivered (2)'], ['completed', 'Completed (20)'], ['cancelled', 'Cancelled (0)']]
-const KIND = { 'In progress': 'blue', 'In revision': 'amber', Requirements: 'blue', Delivered: 'green', Completed: 'green' }
-const ACTIVE = ['In progress', 'In revision', 'Requirements']
+const TABS = [
+  ['all', 'All Orders'],
+  ['active', 'Active'],
+  ['delivered', 'Delivered'],
+  ['completed', 'Completed'],
+]
 
 export default function Orders() {
+  const { user } = useAuth()
+  const [orders, setOrders] = useState([])
   const [tab, setTab] = useState('all')
-  const [page, setPage] = useState(1)
-  const [notify, toast] = useToast()
+  const [loading, setLoading] = useState(true)
+  const [reviewOrder, setReviewOrder] = useState(null)
+  const [rating, setRating] = useState(5)
+  const [comment, setComment] = useState('')
+  const [msg, setMsg] = useState({ type: '', text: '' })
 
-  const filtered = orders.filter((o) =>
-    tab === 'all' ? true : tab === 'active' ? ACTIVE.includes(o.status) : tab === 'delivered' ? o.status === 'Delivered' : tab === 'completed' ? o.status === 'Completed' : false)
-  const pages = Math.max(1, Math.ceil(filtered.length / PER))
-  const rows = filtered.slice((page - 1) * PER, page * PER)
-  const total = tab === 'all' ? 26 : filtered.length
-  const choose = (k) => { setTab(k); setPage(1) }
+  const load = useCallback(() => {
+    setLoading(true)
+    api('/api/orders')
+      .then((d) => setOrders(d.items || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const updateStatus = async (id, status) => {
+    setMsg({ type: '', text: '' })
+    try {
+      await api(`/api/orders/${id}/status`, { method: 'PUT', body: { status } })
+      setMsg({ type: 'success', text: `Order updated to ${status.replace('_', ' ')}.` })
+      load()
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+    }
+  }
+
+  const submitReview = async (e) => {
+    e.preventDefault()
+    try {
+      await api(`/api/orders/${reviewOrder.id}/review`, { method: 'POST', body: { rating: Number(rating), comment } })
+      setMsg({ type: 'success', text: 'Review submitted! Thank you.' })
+      setReviewOrder(null)
+      setComment('')
+      load()
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+    }
+  }
+
+  const filtered = orders.filter((o) => {
+    if (tab === 'all') return true
+    if (tab === 'active') return ['requirements', 'in_progress', 'in_revision'].includes(o.status)
+    return o.status === tab
+  })
 
   return (
-    <div className="page page-seller">
-      <SellerHeader active="orders" />
-      <main className="s-main">
-        <div className="s-top">
+    <div className="page">
+      <Header active="orders" />
+      <main className="sk-container">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 24 }}>
           <div>
-            <span className="eyebrow">GREAT WORK IN PROGRESS</span>
-            <h1>Orders</h1>
-            <p>Every project, every milestone. All in one place.</p>
+            <span className="sk-badge blue" style={{ marginBottom: 6 }}>ORDER MANAGEMENT</span>
+            <h1 style={{ margin: 0, fontSize: 28 }}>Orders &amp; Milestones</h1>
           </div>
-          <button type="button" className="s-ghost" onClick={() => notify('Month picker is coming soon')}>November 2026 ▾</button>
+          <Link to="/payments" className="sk-btn sk-btn-outline">View Payment Records</Link>
         </div>
 
-        <div className="stat-grid">
-          <div className="stat"><span>Active orders</span><b>4</b><small>Let&rsquo;s keep great work moving</small></div>
-          <div className="stat"><span>Awaiting approval</span><b>2</b><small>Your work is with the client</small></div>
-          <div className="stat"><span>Completed orders</span><b>20</b><small>Ideas turned into outcomes</small></div>
-          <div className="stat"><span>Earned this month</span><b>$2,450</b><small className="up">↑ 24.8% from last month</small></div>
-        </div>
+        {msg.text && <div className={`sk-alert ${msg.type}`}>{msg.text}</div>}
 
-        <div className="tabs-row">
-          <div className="tabs">
-            {TABS.map(([k, label]) => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => choose(k)}>{label}</button>)}
-          </div>
-          <button type="button" className="s-ghost" onClick={() => notify('Filters are coming soon')}>Filter orders</button>
-        </div>
-
-        <div className="table">
-          <div className="trow thead"><span>PROJECT</span><span>CLIENT</span><span>DUE DATE</span><span>TOTAL</span><span>STATUS</span><span /></div>
-          {rows.length === 0 && <div className="empty">No orders in this view.</div>}
-          {rows.map((o) => (
-            <div className="trow" key={o.id}>
-              <span className="proj"><img src={o.img} alt="" /><span><b>{o.title}</b><small>#{o.id}</small></span></span>
-              <span>{o.client}</span>
-              <span className="muted">{o.due}</span>
-              <span><b>${o.total}</b></span>
-              <span><i className={'badge ' + KIND[o.status]}>{o.status}</i></span>
-              <span><Link className="link" to="/messages">View order</Link></span>
-            </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+          {TABS.map(([k, label]) => (
+            <button key={k} type="button" className={`sk-btn sk-btn-sm ${tab === k ? 'sk-btn-primary' : 'sk-btn-outline'}`} onClick={() => setTab(k)}>
+              {label}
+            </button>
           ))}
         </div>
 
-        <div className="pager-row">
-          <small>Showing {rows.length} of {total} orders</small>
-          <div className="pager">
-            <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</button>
-            {Array.from({ length: pages }, (_, i) => <button key={i} type="button" className={page === i + 1 ? 'on' : ''} onClick={() => setPage(i + 1)}>{i + 1}</button>)}
-            <button type="button" disabled={page === pages} onClick={() => setPage(page + 1)}>Next</button>
+        {loading ? (
+          <div className="sk-skeleton sk-skeleton-card" />
+        ) : filtered.length === 0 ? (
+          <div className="sk-empty">
+            <h3>No orders in this view</h3>
+            <p>{user?.role === 'client' ? 'Explore services or hire a freelancer on a project to get started.' : 'Orders from clients will appear here.'}</p>
+            <Link to={user?.role === 'client' ? '/explore' : '/projects'} className="sk-btn sk-btn-primary">
+              {user?.role === 'client' ? 'Explore Services' : 'Browse Projects'}
+            </Link>
           </div>
-        </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {filtered.map((o) => (
+              <div key={o.id} className="sk-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span className="sk-badge gray">#{o.order_code}</span>
+                    <span className={`sk-badge ${o.status === 'completed' ? 'green' : o.status === 'delivered' ? 'blue' : 'amber'}`}>
+                      {o.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <strong style={{ display: 'block', fontSize: 16, marginBottom: 4 }}>{o.title}</strong>
+                  <span style={{ fontSize: 13, color: 'var(--sk-muted)' }}>
+                    {user?.role === 'freelancer' ? `Client: ${o.client_name}` : `Freelancer: ${o.freelancer_name}`} · Due {o.due_date} · <strong>${o.amount}</strong>
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <Link to="/messages" className="sk-btn sk-btn-outline sk-btn-sm">Message</Link>
+                  {user?.role === 'freelancer' && ['requirements', 'in_progress', 'in_revision'].includes(o.status) && (
+                    <button type="button" className="sk-btn sk-btn-primary sk-btn-sm" onClick={() => updateStatus(o.id, 'delivered')}>
+                      Deliver Work
+                    </button>
+                  )}
+                  {user?.role === 'client' && o.status === 'delivered' && (
+                    <>
+                      <button type="button" className="sk-btn sk-btn-outline sk-btn-sm" onClick={() => updateStatus(o.id, 'in_revision')}>
+                        Request Revision
+                      </button>
+                      <button type="button" className="sk-btn sk-btn-primary sk-btn-sm" onClick={() => updateStatus(o.id, 'completed')}>
+                        Approve &amp; Complete
+                      </button>
+                    </>
+                  )}
+                  {user?.role === 'client' && o.status === 'completed' && !o.reviewed_by_me && (
+                    <button type="button" className="sk-btn sk-btn-primary sk-btn-sm" onClick={() => setReviewOrder(o)}>
+                      Leave Review
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {reviewOrder && (
+          <form className="sk-card" style={{ marginTop: 24, maxWidth: 520 }} onSubmit={submitReview}>
+            <h2 style={{ margin: '0 0 12px', fontSize: 18 }}>Review #{reviewOrder.order_code}</h2>
+            <div className="sk-field">
+              <label>Rating (1–5)</label>
+              <select className="sk-select" value={rating} onChange={(e) => setRating(e.target.value)}>
+                {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} Stars</option>)}
+              </select>
+            </div>
+            <div className="sk-field">
+              <label>Review comment</label>
+              <textarea className="sk-textarea" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} required minLength={5} placeholder="Share your experience working together..." />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="submit" className="sk-btn sk-btn-primary">Submit Review</button>
+              <button type="button" className="sk-btn sk-btn-outline" onClick={() => setReviewOrder(null)}>Cancel</button>
+            </div>
+          </form>
+        )}
       </main>
-      <SellerFooter />
-      {toast}
+      <Footer />
     </div>
   )
 }

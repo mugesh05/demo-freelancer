@@ -1,0 +1,12 @@
+{
+  "name": "skillrora-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix skillrora install && npm --prefix skillrora run build",
+    "start": "npm --prefix skillrora start"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

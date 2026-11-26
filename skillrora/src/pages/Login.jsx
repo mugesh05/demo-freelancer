@@ -1,49 +1,95 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Header from '../components/Header.jsx'
-import useToast from '../components/useToast.jsx'
-import { IMG } from '../data/services.js'
+import Footer from '../components/Footer.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Login() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [visible, setVisible] = useState(false)
-  const [notify, toast] = useToast()
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const { login } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setSubmitting(true)
+    try {
+      const user = await login(email, password)
+      const dest = location.state?.from || (user.role === 'client' ? '/client-dashboard' : '/dashboard')
+      navigate(dest, { replace: true })
+    } catch (err) {
+      setError(err.message || 'Unable to log in. Please check your credentials.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const fillDemo = (demoEmail) => {
+    setEmail(demoEmail)
+    setPassword('Skillrora123!')
+    setError('')
+  }
 
   return (
-    <div className="page page-login">
+    <div className="page">
       <Header />
-      <main className="login-layout">
-        <section className="login-promo">
-          <span className="eyebrow">YOUR NEXT GREAT PROJECT STARTS HERE</span>
-          <h1>Big ideas.<br />Great connections.</h1>
-          <p>Find your people, build your business, and bring your next big idea to life.</p>
-          <div className="promo-image"><img src={IMG.hero} alt="Freelancer smiling in a bright office" /></div>
-          <div className="promo-caption"><h2>A world of talent. A world of possibilities.</h2><p>Good people. Great outcomes.</p></div>
-        </section>
-
-        <section className="login-panel">
-          <form className="login-card" onSubmit={(e) => { e.preventDefault(); notify('Welcome back') }}>
-            <h2>Welcome back</h2>
-            <p>Log in to keep great work moving.</p>
-            <div className="field"><label htmlFor="email">Email address</label><input id="email" type="email" placeholder="you@example.com" required /></div>
-            <div className="field">
-              <label htmlFor="password">Password</label>
-              <div className="password-wrap">
-                <input id="password" type={visible ? 'text' : 'password'} placeholder="Enter your password" required />
-                <button type="button" onClick={() => setVisible(!visible)}>{visible ? 'Hide' : 'Show'}</button>
+      <main className="sk-container" style={{ maxWidth: 960, paddingTop: 40 }}>
+        <div className="sk-grid-2" style={{ alignItems: 'center', gap: 40 }}>
+          <div>
+            <span className="sk-badge blue" style={{ marginBottom: 14 }}>SKILLRORA MARKETPLACE</span>
+            <h1 style={{ fontSize: 36, lineHeight: 1.15, margin: '0 0 14px' }}>Welcome back to your workspace.</h1>
+            <p style={{ color: 'var(--sk-muted)', fontSize: 16, lineHeight: 1.6, margin: '0 0 24px' }}>
+              Manage your active projects, proposals, messages, and milestones in one place.
+            </p>
+            <div className="sk-card" style={{ padding: 16, background: 'var(--sk-surface-soft)' }}>
+              <strong style={{ fontSize: 13, display: 'block', marginBottom: 10 }}>Quick Demo Accounts (Password: Skillrora123!)</strong>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" className="sk-btn sk-btn-outline sk-btn-sm" onClick={() => fillDemo('alex@skillrora.com')}>
+                  Freelancer (Alex Morgan)
+                </button>
+                <button type="button" className="sk-btn sk-btn-outline sk-btn-sm" onClick={() => fillDemo('daniel@skillrora.com')}>
+                  Client (Daniel Wilson)
+                </button>
               </div>
             </div>
-            <div className="form-options"><label className="remember"><input type="checkbox" /> Remember me</label><a href="#forgot">Forgot password?</a></div>
-            <button className="submit-button" type="submit">Log in</button>
-            <p className="signup-link">New to Skillrora? <a href="#signup">Sign up</a></p>
-            <a className="help-link" href="#support">Need help logging in? <span>Contact support</span></a>
+          </div>
+
+          <form className="sk-card" onSubmit={handleSubmit}>
+            <h2 style={{ margin: '0 0 6px' }}>Log in</h2>
+            <p style={{ color: 'var(--sk-muted)', fontSize: 14, margin: '0 0 20px' }}>Enter your Skillrora account credentials.</p>
+
+            {error && <div className="sk-alert error" role="alert">{error}</div>}
+
+            <div className="sk-field">
+              <label htmlFor="login-email">Email address</label>
+              <input id="login-email" className="sk-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
+            </div>
+
+            <div className="sk-field">
+              <label htmlFor="login-password">Password</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input id="login-password" className="sk-input" type={visible ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required />
+                <button type="button" className="sk-btn sk-btn-outline sk-btn-sm" onClick={() => setVisible((v) => !v)}>{visible ? 'Hide' : 'Show'}</button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, fontSize: 13 }}>
+              <Link to="/forgot-password" style={{ color: 'var(--sk-primary)', fontWeight: 600 }}>Forgot password?</Link>
+              <Link to="/signup" style={{ color: 'var(--sk-muted)' }}>Need an account? <strong style={{ color: 'var(--sk-primary)' }}>Sign up</strong></Link>
+            </div>
+
+            <button className="sk-btn sk-btn-primary" style={{ width: '100%' }} type="submit" disabled={submitting}>
+              {submitting ? 'Signing in...' : 'Log in'}
+            </button>
           </form>
-        </section>
+        </div>
       </main>
-      <footer className="footer-bar">
-        <span>© 2025 Skillrora. All rights reserved.</span>
-        <div className="footer-links"><a href="#privacy">Privacy Policy</a><a href="#terms">Terms of Service</a></div>
-      </footer>
-      {toast}
+      <Footer />
     </div>
   )
 }

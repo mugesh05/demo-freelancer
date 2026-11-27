@@ -1,4 +1,16 @@
 import { Router } from 'express'
+import nodemailer from 'nodemailer'
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'localhost',
+  port: Number(process.env.SMTP_PORT) || 1025,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || ''
+  }
+})
+
 import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
 import { db } from '../db.js'
@@ -29,7 +41,7 @@ router.post('/register', (req, res) => {
   if (!password || String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' })
   }
-  if (!['client', 'freelancer', 'admin'].includes(role)) {
+  if (!['client', 'freelancer'].includes(role)) {
     return res.status(400).json({ error: 'Please select a valid role.' })
   }
 
@@ -44,10 +56,13 @@ router.post('/register', (req, res) => {
   const tint = TINTS[Math.floor(Math.random() * TINTS.length)]
   const defaultTitle = title?.trim() || (role === 'freelancer' ? 'Independent Freelancer' : role === 'admin' ? 'Administrator' : 'Client')
 
+  const verificationToken = crypto.randomBytes(20).toString('hex')
+  const verificationExpires = Date.now() + 24 * 60 * 60 * 1000 // 24h
   const result = db.prepare(`
-    INSERT INTO users (name, email, password_hash, role, initials, tint, title, wallet_address)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name.trim(), normalizedEmail, passwordHash, role, initials, tint, defaultTitle, wallet_address.trim())
+    INSERT INTO users (name, email, password_hash, role, initials, tint, title, wallet_address, email_verified, verification_token, verification_expires)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+  `).run(name.trim(), normalizedEmail, passwordHash, role, initials, tint, defaultTitle, wallet_address.trim(), verificationToken, verificationExpires)
+
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid)
 
@@ -62,8 +77,17 @@ router.post('/register', (req, res) => {
     role === 'freelancer' ? '/dashboard' : role === 'admin' ? '/admin' : '/client-dashboard'
   )
 
+  // Send verification email (placeholder - uses nodemailer)
+  const verificationUrl = `http://localhost:5000/api/auth/verify-email?token=${verificationToken}`
+  transporter.sendMail({
+    from: process.env.EMAIL_FROM || 'no-reply@skillrora.com',
+    to: email.trim(),
+    subject: 'Skillrora Email Verification',
+    text: `Please verify your email by clicking the link: ${verificationUrl}`,
+    html: `<p>Please verify your email by clicking <a href="${verificationUrl}">here</a>.</p>`
+  }).catch(err => console.error('Email send error:', err))
   const token = signToken(user)
-  res.status(201).json({ token, user: sanitizeUser(user) })
+  res.status(201).json({ token, user: sanitizeUser(user), message: 'Please verify your email address. Check your inbox for the verification link.' })
 })
 
 router.post('/login', (req, res) => {
@@ -121,8 +145,22 @@ router.post('/reset-password', (req, res) => {
   res.json({ message: 'Your password has been reset. You can now log in.' })
 })
 
-router.post('/logout', (_req, res) => {
-  res.json({ ok: true })
+router.get('/verify-email', (req, res) => {
+  const { token } = req.query || {}
+  if (!token) {
+    return res.status(400).json({ error: 'Verification token required' })
+  }
+  const user = db
+    .prepare('SELECT id, verification_expires FROM users WHERE verification_token = ?')
+    .get(token)
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid verification token' })
+  }
+  if (Number(user.verification_expires) < Date.now()) {
+    return res.status(400).json({ error: 'Verification token has expired' })
+  }
+  db.prepare('UPDATE users SET email_verified = 1, verification_token = NULL, verification_expires = NULL WHERE id = ?').run(user.id)
+  res.json({ message: 'Email successfully verified' })
 })
 
-export default router
+

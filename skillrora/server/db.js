@@ -54,7 +54,9 @@ export function initDatabase() {
       languages_json TEXT DEFAULT '[{"language":"English","level":"Native / Bilingual"}]',
       rating REAL DEFAULT 5.0,
       review_count INTEGER DEFAULT 0,
-      email_verified INTEGER DEFAULT 1,
+      email_verified INTEGER DEFAULT 0,
+      verification_token TEXT DEFAULT NULL,
+      verification_expires INTEGER DEFAULT NULL,
       reset_token TEXT,
       reset_expires INTEGER,
       created_at TEXT DEFAULT (datetime('now'))

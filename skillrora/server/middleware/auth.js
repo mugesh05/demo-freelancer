@@ -1,7 +1,10 @@
 import jwt from 'jsonwebtoken'
 import { db } from '../db.js'
 
-export const JWT_SECRET = process.env.JWT_SECRET || 'skillrora-dev-secret-change-in-production'
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable not set')
+}
 
 export function signToken(user) {
   return jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' })

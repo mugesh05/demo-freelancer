@@ -1,6 +1,9 @@
+// Existing imports
 import express from 'express'
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
+import cors from 'cors'
+import csurf from 'csurf'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -10,6 +13,8 @@ import marketplaceRoutes from './routes/marketplace.js'
 import projectRoutes from './routes/projects.js'
 import workspaceRoutes from './routes/workspace.js'
 import adminRoutes from './routes/admin.js'
+
+// Existing code continues...
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.resolve(__dirname, '../dist')

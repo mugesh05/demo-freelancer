@@ -193,12 +193,17 @@ router.post('/orders', requireAuth, requireRole('client'), (req, res) => {
   const curr = gig.currency || 'USDT'
   const network = gig.crypto_network || 'Polygon'
 
-  const orderRes = db.prepare(`
-    INSERT INTO orders (order_code, gig_id, client_id, freelancer_id, title, package_name, amount, currency, crypto_network, status, escrow_status, due_date, cover_image)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'requirements', 'pending_deposit', ?, ?)
-  `).run(code, gig.id, req.user.id, gig.seller_id, gig.title, pkg.key, pkg.price, curr, network, due, gig.cover_image)
+  // Fetch current platform commission rate (percentage as integer)
+  const commissionRateRow = db.prepare("SELECT value FROM settings WHERE key = 'commission_rate'").get();
+  const commissionRate = commissionRateRow ? Number(commissionRateRow.value) : 20;
 
-  const fee = Math.round(pkg.price * 0.1)
+  const orderRes = db.prepare(`
+    INSERT INTO orders (order_code, gig_id, client_id, freelancer_id, title, package_name, amount, currency, crypto_network, commission_percent, status, escrow_status, due_date, cover_image)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'requirements', 'pending_deposit', ?, ?)
+  `).run(code, gig.id, req.user.id, gig.seller_id, gig.title, pkg.key, pkg.price, curr, network, commissionRate, due, gig.cover_image)
+
+  // Platform fee based on commission rate
+  const fee = Math.round(pkg.price * commissionRate / 100);
   db.prepare(`
     INSERT INTO payments (order_id, payer_id, payee_id, amount, platform_fee, net_amount, currency, crypto_currency, crypto_network, gateway_provider, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'crypto_escrow', 'pending_deposit')

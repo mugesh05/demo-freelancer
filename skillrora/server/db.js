@@ -134,6 +134,7 @@ export function initDatabase() {
       amount INTEGER NOT NULL,
       currency TEXT NOT NULL DEFAULT 'USDT',
       crypto_network TEXT NOT NULL DEFAULT 'Polygon',
+      commission_percent INTEGER NOT NULL DEFAULT 20,
       status TEXT NOT NULL DEFAULT 'requirements' CHECK(status IN ('requirements', 'in_progress', 'in_revision', 'delivered', 'completed', 'cancelled')),
       escrow_status TEXT NOT NULL DEFAULT 'pending_deposit' CHECK(escrow_status IN ('pending_deposit', 'in_escrow', 'work_delivered', 'approved_released', 'refund_requested', 'disputed', 'refunded')),
       escrow_tx_hash TEXT DEFAULT '',
@@ -145,6 +146,11 @@ export function initDatabase() {
       cover_image TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('commission_rate', '20');
 
     CREATE TABLE IF NOT EXISTS conversations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
